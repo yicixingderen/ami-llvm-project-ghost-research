@@ -61,10 +61,18 @@ let AMiClass = Activatable, hasSideEffects = 1, isBranch = 0 in {
 }
 }
 
+// Ghost loads carry their destination register as a store-forwarding token.
+// They do not produce an architectural GPR value.
+let hasSideEffects = 0, mayLoad = 1, mayStore = 0 in
+class GhostLoad_ri<bits<3> funct3, string opcodestr>
+    : RVInstI<funct3, OPC_GLOAD, (outs),
+              (ins GPR:$rd, GPRMem:$rs1, simm12:$imm12),
+              opcodestr, "$rd, ${imm12}(${rs1})">;
+
 multiclass AMiLoad_ri<bits<3> funct3, string opcodestr> {
 let AMiClass = Mimicable in {
   let Opcode = OPC_GLOAD.Value in
-  def G#NAME : Load_ri<funct3, "g."#opcodestr>, QualifiedInst;
+  def G#NAME : GhostLoad_ri<funct3, "g."#opcodestr>, QualifiedInst;
   let Opcode = OPC_MLOAD.Value in
   def M#NAME : Load_ri<funct3, "m."#opcodestr>, QualifiedInst;
   let Opcode = OPC_PLOAD.Value in

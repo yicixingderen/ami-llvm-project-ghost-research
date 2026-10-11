@@ -175,8 +175,8 @@ void RISCVAMiLinearizeRegion::handleRegion(ActivatingRegion *Region) {
 
       auto Opcode =
           RISCV::AMi::getQualified<RISCV::AMi::Ghost>(TII->getMatchingLoad(*I));
-      BuildMI(*I->getParent(), I->getIterator(), DebugLoc(), TII->get(Opcode),
-              I->getOperand(0).getReg().asMCReg())
+      BuildMI(*I->getParent(), I->getIterator(), DebugLoc(), TII->get(Opcode))
+          .addReg(I->getOperand(0).getReg().asMCReg())
           .add(Op1)
           .add(Op2);
     } else {
