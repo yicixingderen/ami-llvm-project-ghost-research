@@ -1,5 +1,28 @@
 # LLVM Compiler with Control Flow Linearization using Architectural Mimicry (AMi)
 
+## Research fork: Ghost store-only forwarding
+
+This repository builds on [Daan Vanoverloop's AMi LLVM compiler](https://github.com/Danacus/llvm-project-ami-cfl)
+and the original [LLVM project](https://github.com/llvm/llvm-project). The AMi
+architecture is from [Winderix et al., IEEE S&P 2024](https://mici.hu/papers/winderix24ami.pdf).
+The original compiler's thesis, design, and history remain credited below.
+
+Our change (`f160e224b`) models the destination of AMi Ghost loads as an input
+operand in LLVM MachineInstr while retaining the encoded `rd` field. The AMi
+linearization pass still emits `addi` to preserve the architectural old value,
+then a Ghost load immediately before its corresponding store. This matches
+the direct store-forwarding path of the companion
+[AMi hardware research fork](https://github.com/yicixingderen/ami-ghost-research).
+Ordinary loads, `m.*`, `p.*`, and Ghost ALU instructions are outside this change.
+Late-issued store replay is not implemented.
+
+The targeted regression is `llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`.
+The recorded compiler comparison covers 11 upstream AMi benchmarks in five
+forms each; both compiler groups produced the same reports. These benchmarks
+largely use existing assembly snapshots, so they do not measure a general
+CodeGen performance effect of this Ghost change. Reports and reproduction
+instructions are in the companion AMi repository.
+
 This repository contains LLVM 16 extended with:
 
 - Secrecy labels in clang, lowered to function parameter attributes in LLVM IR, and further lowered to the backend through the SelectionDAG.
