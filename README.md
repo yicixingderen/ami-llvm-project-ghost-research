@@ -4,9 +4,9 @@
 
 ## English
 
-This repository is an LLVM 16 fork for the AMi (Architectural Mimicry) hardware-software countermeasure. It adds secrecy labels in Clang and automatic control-flow linearization in the RISC-V backend. The research change documented here models a Ghost load as a store-forward-only operation: the encoded `rd` field is preserved, but the MachineInstr does not expose the Ghost value as an ordinary GPR definition. The change is intended to match the companion [AMi hardware research fork](https://github.com/yicixingderen/ami-ghost-research).
+This repository is an LLVM 16 fork for the AMi (Architectural Mimicry) hardware-software countermeasure. It adds secrecy labels in Clang and automatic control-flow linearization in the RISC-V backend. The research change models a Ghost load as a store-forward-only operation: the encoded `rd` field is preserved and the Ghost value is represented as an input operand in MachineInstr. The change matches the companion [AMi hardware research fork](https://github.com/yicixingderen/ami-ghost-research).
 
-The current research branch is based on commit `f160e224b5f040b340b3ae0693b41dacc0458ef0` and includes the regression test [`llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`](llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll). Late-issued store replay is outside the scope of this fork. The original AMi architecture is described in the [IEEE S&P 2024 paper](https://mici.hu/papers/winderix24ami.pdf), and the control-flow-linearization design is described in [Daan Vanoverloop's thesis](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf).
+The current research branch is based on commit `f160e224b5f040b340b3ae0693b41dacc0458ef0` and includes the regression test [`llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`](llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll). The original AMi architecture is described in the [IEEE S&P 2024 paper](https://mici.hu/papers/winderix24ami.pdf), and the control-flow-linearization design is described in [Daan Vanoverloop's thesis](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf).
 
 ### Reproducible build and installation
 
@@ -121,9 +121,9 @@ For the complete annotated C example, see the original AMi compiler README histo
 
 ## 中文
 
-本仓库是面向 AMi（Architectural Mimicry，架构拟态）软硬件协同防护机制的 LLVM 16 分支，包含 Clang 保密性标签和 RISC-V 后端的自动控制流线性化。本研究分支将 Ghost load 建模为只向 store 转发的操作：保留编码中的 `rd` 字段，但不在 MachineInstr 中把 Ghost 真实值暴露为普通 GPR 定义。该行为与配套的 [AMi 硬件研究分支](https://github.com/yicixingderen/ami-ghost-research)保持一致。
+本仓库是面向 AMi（Architectural Mimicry，架构拟态）软硬件协同防护机制的 LLVM 16 分支，包含 Clang 保密性标签和 RISC-V 后端的自动控制流线性化。本研究分支将 Ghost load 建模为只向 store 转发的操作：保留编码中的 `rd` 字段，并在 MachineInstr 中将 Ghost 值作为输入操作数处理。该行为与配套的 [AMi 硬件研究分支](https://github.com/yicixingderen/ami-ghost-research)保持一致。
 
-当前研究代码基于提交 `f160e224b5f040b340b3ae0693b41dacc0458ef0`，并包含回归测试 [`llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`](llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll)。本分支不实现晚发 store 的 replay。原始 AMi 架构见 [IEEE S&P 2024 论文](https://mici.hu/papers/winderix24ami.pdf)，控制流线性化设计见 [Daan Vanoverloop 的论文](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf)。
+当前研究代码基于提交 `f160e224b5f040b340b3ae0693b41dacc0458ef0`，并包含回归测试 [`llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`](llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll)。原始 AMi 架构见 [IEEE S&P 2024 论文](https://mici.hu/papers/winderix24ami.pdf)，控制流线性化设计见 [Daan Vanoverloop 的论文](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf)。
 
 ### 可复现的构建与安装
 
