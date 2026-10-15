@@ -1,222 +1,237 @@
-# LLVM Compiler with Control Flow Linearization using Architectural Mimicry (AMi)
+# LLVM Compiler with Control-Flow Linearization using Architectural Mimicry (AMi)
 
-## Research fork: Ghost store-only forwarding
+[English](#english) | [中文](#中文)
 
-This repository builds on [Daan Vanoverloop's AMi LLVM compiler](https://github.com/Danacus/llvm-project-ami-cfl)
-and the original [LLVM project](https://github.com/llvm/llvm-project). The AMi
-architecture is from [Winderix et al., IEEE S&P 2024](https://mici.hu/papers/winderix24ami.pdf).
-The original compiler's thesis, design, and history remain credited below.
+## English
 
-Our change (`f160e224b`) models the destination of AMi Ghost loads as an input
-operand in LLVM MachineInstr while retaining the encoded `rd` field. The AMi
-linearization pass still emits `addi` to preserve the architectural old value,
-then a Ghost load immediately before its corresponding store. This matches
-the direct store-forwarding path of the companion
-[AMi hardware research fork](https://github.com/yicixingderen/ami-ghost-research).
-Ordinary loads, `m.*`, `p.*`, and Ghost ALU instructions are outside this change.
-Late-issued store replay is not implemented.
+This repository is an LLVM 16 fork for the AMi (Architectural Mimicry) hardware-software countermeasure. It adds secrecy labels in Clang and automatic control-flow linearization in the RISC-V backend. The research change documented here models a Ghost load as a store-forward-only operation: the encoded `rd` field is preserved, but the MachineInstr does not expose the Ghost value as an ordinary GPR definition. The change is intended to match the companion [AMi hardware research fork](https://github.com/yicixingderen/ami-ghost-research).
 
-The targeted regression is `llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`.
-The recorded compiler comparison covers 11 upstream AMi benchmarks in five
-forms each; both compiler groups produced the same reports. These benchmarks
-largely use existing assembly snapshots, so they do not measure a general
-CodeGen performance effect of this Ghost change. Reports and reproduction
-instructions are in the companion AMi repository.
+The current research branch is based on commit `f160e224b5f040b340b3ae0693b41dacc0458ef0` and includes the regression test [`llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`](llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll). Late-issued store replay is outside the scope of this fork. The original AMi architecture is described in the [IEEE S&P 2024 paper](https://mici.hu/papers/winderix24ami.pdf), and the control-flow-linearization design is described in [Daan Vanoverloop's thesis](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf).
 
-This repository contains LLVM 16 extended with:
+### Reproducible build and installation
 
-- Secrecy labels in clang, lowered to function parameter attributes in LLVM IR, and further lowered to the backend through the SelectionDAG.
-- Automatic control flow linearization making use of architectural mimicry (RISC-V backend).
+The supported path below was written for a fresh 64-bit Ubuntu 22.04 or later installation. The Makefile builds only the LLVM, Clang, and LLD projects for the RISC-V target and installs them into this repository's `install/` directory.
 
-References:
+#### 1. Install host dependencies
 
-- [Compiler Support for Control-Flow Linearization Leveraging Hardware Defenses](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf), master's thesis of Daan Vanoverloop (that's me!)
-- "Hardware Support to Accelerate Side-channel Resistant Programs" by Winderix et al. (under submission)
+```sh
+sudo apt-get update
+sudo apt-get install -y \
+  git make build-essential cmake ninja-build clang lld python3 \
+  zlib1g-dev libzstd-dev libxml2-dev
+```
 
-## Usage instructions
+The bootstrap compiler is the system `clang`/`clang++`; the Makefile uses those names explicitly. Check them before configuring:
 
-The following LLVM options can be used to configure control flow linearization methods:
+```sh
+clang --version
+clang++ --version
+cmake --version
+ninja --version
+```
 
-| Option                             | Values (default in **bold**) | Description                                                                                                                                                                                                                                                        |
-|------------------------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -riscv-enable-ami-linearization    | true, **false**              | Enable linearization using architectural mimicry (AMi)                                                                                                                                                                                                             |
-| -riscv-enable-molnar-linearization | true, **false**              | Enable linearization using Molnar's method, based on state-of-the-art research of Borrello et al. and Wu et al.                                                                                                                                                    |
-| -riscv-ami-general-linearization   | true, **false**              | When linearization using AMi is enabled, enable linearization of reducible control flow by using the method based on Partial Control Flow Linearization by Moll and Hack. If set to false, secret-dependent branches in the input IR are assumed to be structured. |
+#### 2. Checkout a fixed source revision
 
-## Example of Annotated Program
+```sh
+git clone --filter=blob:none \
+  https://github.com/yicixingderen/ami-llvm-project-ghost-research.git
+cd ami-llvm-project-ghost-research
+git checkout 83651436f5b047c66e1d3677941c3cf9ca6d50fd
+```
 
-Below is an example of an annotated program. Note that at the time of writing this README, support for the upcoming C2x standard must be enabled in clang with `-std=c2x`.
+#### 3. Configure, build, and install
 
-```c
-// Macro to make annotation of types easier
+```sh
+make JOBS="$(nproc)" configure-build
+make JOBS="$(nproc)" build
+make install
+```
+
+The default build type is `Debug`, the generator is Ninja, and the install prefix is `./install`. For a smaller optimized build, use `BUILD_TYPE=Release` consistently for both `configure-build` and `build`. The resulting tools include `install/bin/clang`, `install/bin/llc`, `install/bin/ld.lld`, `install/bin/llvm-objcopy`, and `install/bin/llvm-nm`.
+
+```sh
+export PATH="$PWD/install/bin:$PATH"
+clang --version
+llc --version
+```
+
+#### 4. Run the focused regression test
+
+```sh
+build/llvm/bin/llvm-lit -v llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll
+```
+
+The test checks that AMi linearization emits an `ADDI`, a Ghost load, and the directly dependent store, without a second ordinary Ghost-load definition. The AMi options used by the test are:
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `-riscv-enable-ami-linearization` | `false` | Enable AMi control-flow linearization. |
+| `-riscv-enable-molnar-linearization` | `false` | Enable Molnar-style linearization. |
+| `-riscv-ami-general-linearization` | `false` | Linearize general reducible control flow when AMi is enabled. |
+
+#### 5. Compile an annotated program
+
+Use `clang::annotate_type("secret")` for secret values and pass the AMi options explicitly:
+
+```sh
+cat >/tmp/ami-example.c <<'EOF'
 #define _secret_ [[clang::annotate_type("secret")]]
-
-// Only needed for linearization with Molnar's method, set to 0xffffffff initially
-#define CFL_VAR  __attribute__((section("cfl_data")))
-CFL_VAR unsigned int cfl_taken = (unsigned)-1;
 
 static int v;
 
-// This function is marked as mimicable, hence it can safely be called while in mimicry mode
 [[clang::noinline, clang::mimicable]]
 static void foo(int i) {
-  v++;
+  v += i;
 }
 
-// This function takes a secret integer a and public integer b as input, and returns a secret integer
 int _secret_ ifthenloop(int _secret_ a, int b) {
   v = 0;
-
   if (a < b) {
     int i;
-
     #pragma clang loop unroll(disable)
-    for (i=0; i<3; i++) {
+    for (i = 0; i < 3; i++)
       foo(i);
-    }
   }
-
   return v;
 }
 
 int main(void) {
-  // When linearized, both function calls should take the same number of cycles to execute
-  (void) ifthenloop(1, 2);
-  (void) ifthenloop(2, 1);
-
+  (void)ifthenloop(1, 2);
+  (void)ifthenloop(2, 1);
   return 0;
 }
+EOF
+
+install/bin/clang -nostdlib -O3 --target=riscv32 -march=rv32im -std=c2x \
+  -mllvm -riscv-enable-ami-linearization=true \
+  -mllvm -riscv-ami-general-linearization=true \
+  -S /tmp/ami-example.c -o /tmp/ami-example.s
 ```
 
-To compile and harden this example, the following command can be used:
+The same options can be passed to `llc` when starting from LLVM IR:
 
-`clang -nostdlib -O3 --target=riscv32 -march=rv32im -std=c2x -mllvm -riscv-enable-ami-linearization=true -mllvm -riscv-ami-general-linearization=true main.c`
+```sh
+install/bin/llc -march=riscv32 \
+  -riscv-enable-ami-linearization=true \
+  -riscv-ami-general-linearization=true \
+  example.ll -o example.s
+```
 
-Alternatively, `llc` can be invoked on IR code to generate RISC-V assembly:
+For the complete annotated C example, see the original AMi compiler README history or the source and test files linked above. General LLVM build details are maintained in the [official Getting Started guide](https://llvm.org/docs/GettingStarted.html).
 
-`llc -march=riscv32 -riscv-enable-ami-linearization=true -riscv-ami-general-linearization=true main.ll -o main.s`
+## 中文
 
-(original README below)
+本仓库是面向 AMi（Architectural Mimicry，架构拟态）软硬件协同防护机制的 LLVM 16 分支，包含 Clang 保密性标签和 RISC-V 后端的自动控制流线性化。本研究分支将 Ghost load 建模为只向 store 转发的操作：保留编码中的 `rd` 字段，但不在 MachineInstr 中把 Ghost 真实值暴露为普通 GPR 定义。该行为与配套的 [AMi 硬件研究分支](https://github.com/yicixingderen/ami-ghost-research)保持一致。
 
-# The LLVM Compiler Infrastructure
+当前研究代码基于提交 `f160e224b5f040b340b3ae0693b41dacc0458ef0`，并包含回归测试 [`llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll`](llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll)。本分支不实现晚发 store 的 replay。原始 AMi 架构见 [IEEE S&P 2024 论文](https://mici.hu/papers/winderix24ami.pdf)，控制流线性化设计见 [Daan Vanoverloop 的论文](https://daan.vanoverloop.xyz/masters-thesis-ami-pcfl.pdf)。
 
-This directory and its sub-directories contain the source code for LLVM,
-a toolkit for the construction of highly optimized compilers,
-optimizers, and run-time environments.
+### 可复现的构建与安装
 
-The README briefly describes how to get started with building LLVM.
-For more information on how to contribute to the LLVM project, please
-take a look at the
-[Contributing to LLVM](https://llvm.org/docs/Contributing.html) guide.
+以下步骤适用于全新的 64 位 Ubuntu 22.04 或更高版本环境。Makefile 只构建面向 RISC-V 的 LLVM、Clang 和 LLD，并把结果安装到本仓库的 `install/` 目录。
 
-## Getting Started with the LLVM System
+#### 1. 安装主机构建依赖
 
-Taken from [here](https://llvm.org/docs/GettingStarted.html).
+```sh
+sudo apt-get update
+sudo apt-get install -y \
+  git make build-essential cmake ninja-build clang lld python3 \
+  zlib1g-dev libzstd-dev libxml2-dev
+```
 
-### Overview
+Makefile 明确使用主机上的 `clang`/`clang++` 作为引导编译器。配置前请检查：
 
-Welcome to the LLVM project!
+```sh
+clang --version
+clang++ --version
+cmake --version
+ninja --version
+```
 
-The LLVM project has multiple components. The core of the project is
-itself called "LLVM". This contains all of the tools, libraries, and header
-files needed to process intermediate representations and convert them into
-object files. Tools include an assembler, disassembler, bitcode analyzer, and
-bitcode optimizer. It also contains basic regression tests.
+#### 2. 获取固定版本源码
 
-C-like languages use the [Clang](http://clang.llvm.org/) frontend. This
-component compiles C, C++, Objective-C, and Objective-C++ code into LLVM bitcode
--- and from there into object files, using LLVM.
+```sh
+git clone --filter=blob:none \
+  https://github.com/yicixingderen/ami-llvm-project-ghost-research.git
+cd ami-llvm-project-ghost-research
+git checkout 83651436f5b047c66e1d3677941c3cf9ca6d50fd
+```
 
-Other components include:
-the [libc++ C++ standard library](https://libcxx.llvm.org),
-the [LLD linker](https://lld.llvm.org), and more.
+#### 3. 配置、构建并安装
 
-### Getting the Source Code and Building LLVM
+```sh
+make JOBS="$(nproc)" configure-build
+make JOBS="$(nproc)" build
+make install
+```
 
-The LLVM Getting Started documentation may be out of date. The [Clang
-Getting Started](http://clang.llvm.org/get_started.html) page might have more
-accurate information.
+默认构建类型为 `Debug`，生成器为 Ninja，安装前缀为 `./install`。如果需要较小的优化版本，请在 `configure-build` 和 `build` 两步都使用 `BUILD_TYPE=Release`。构建结果包括 `install/bin/clang`、`install/bin/llc`、`install/bin/ld.lld`、`install/bin/llvm-objcopy` 和 `install/bin/llvm-nm`。
 
-This is an example work-flow and configuration to get and build the LLVM source:
+```sh
+export PATH="$PWD/install/bin:$PATH"
+clang --version
+llc --version
+```
 
-1. Checkout LLVM (including related sub-projects like Clang):
+#### 4. 运行定向回归测试
 
-     * ``git clone https://github.com/llvm/llvm-project.git``
+```sh
+build/llvm/bin/llvm-lit -v llvm/test/CodeGen/RISCV/ami-ghost-store-forward.ll
+```
 
-     * Or, on windows, ``git clone --config core.autocrlf=false
-    https://github.com/llvm/llvm-project.git``
+该测试检查 AMi 线性化是否生成 `ADDI`、Ghost load 和紧邻的依赖 store，同时不再生成第二个普通 Ghost-load 定义。测试使用的 AMi 选项如下：
 
-2. Configure and build LLVM and Clang:
+| 选项 | 默认值 | 作用 |
+| --- | --- | --- |
+| `-riscv-enable-ami-linearization` | `false` | 启用 AMi 控制流线性化。 |
+| `-riscv-enable-molnar-linearization` | `false` | 启用 Molnar 风格线性化。 |
+| `-riscv-ami-general-linearization` | `false` | AMi 启用时线性化一般可约控制流。 |
 
-     * ``cd llvm-project``
+#### 5. 编译带标注的程序
 
-     * ``cmake -S llvm -B build -G <generator> [options]``
+保密数据使用 `clang::annotate_type("secret")` 标注，并显式传入 AMi 选项：
 
-        Some common build system generators are:
+```sh
+cat >/tmp/ami-example.c <<'EOF'
+#define _secret_ [[clang::annotate_type("secret")]]
 
-        * ``Ninja`` --- for generating [Ninja](https://ninja-build.org)
-          build files. Most llvm developers use Ninja.
-        * ``Unix Makefiles`` --- for generating make-compatible parallel makefiles.
-        * ``Visual Studio`` --- for generating Visual Studio projects and
-          solutions.
-        * ``Xcode`` --- for generating Xcode projects.
+static int v;
 
-        Some common options:
+[[clang::noinline, clang::mimicable]]
+static void foo(int i) {
+  v += i;
+}
 
-        * ``-DLLVM_ENABLE_PROJECTS='...'`` and ``-DLLVM_ENABLE_RUNTIMES='...'`` ---
-          semicolon-separated list of the LLVM sub-projects and runtimes you'd like to
-          additionally build. ``LLVM_ENABLE_PROJECTS`` can include any of: clang,
-          clang-tools-extra, cross-project-tests, flang, libc, libclc, lld, lldb,
-          mlir, openmp, polly, or pstl. ``LLVM_ENABLE_RUNTIMES`` can include any of
-          libcxx, libcxxabi, libunwind, compiler-rt, libc or openmp. Some runtime
-          projects can be specified either in ``LLVM_ENABLE_PROJECTS`` or in
-          ``LLVM_ENABLE_RUNTIMES``.
+int _secret_ ifthenloop(int _secret_ a, int b) {
+  v = 0;
+  if (a < b) {
+    int i;
+    #pragma clang loop unroll(disable)
+    for (i = 0; i < 3; i++)
+      foo(i);
+  }
+  return v;
+}
 
-          For example, to build LLVM, Clang, libcxx, and libcxxabi, use
-          ``-DLLVM_ENABLE_PROJECTS="clang" -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi"``.
+int main(void) {
+  (void)ifthenloop(1, 2);
+  (void)ifthenloop(2, 1);
+  return 0;
+}
+EOF
 
-        * ``-DCMAKE_INSTALL_PREFIX=directory`` --- Specify for *directory* the full
-          path name of where you want the LLVM tools and libraries to be installed
-          (default ``/usr/local``). Be careful if you install runtime libraries: if
-          your system uses those provided by LLVM (like libc++ or libc++abi), you
-          must not overwrite your system's copy of those libraries, since that
-          could render your system unusable. In general, using something like
-          ``/usr`` is not advised, but ``/usr/local`` is fine.
+install/bin/clang -nostdlib -O3 --target=riscv32 -march=rv32im -std=c2x \
+  -mllvm -riscv-enable-ami-linearization=true \
+  -mllvm -riscv-ami-general-linearization=true \
+  -S /tmp/ami-example.c -o /tmp/ami-example.s
+```
 
-        * ``-DCMAKE_BUILD_TYPE=type`` --- Valid options for *type* are Debug,
-          Release, RelWithDebInfo, and MinSizeRel. Default is Debug.
+如果输入的是 LLVM IR，也可以直接调用 `llc`：
 
-        * ``-DLLVM_ENABLE_ASSERTIONS=On`` --- Compile with assertion checks enabled
-          (default is Yes for Debug builds, No for all other build types).
+```sh
+install/bin/llc -march=riscv32 \
+  -riscv-enable-ami-linearization=true \
+  -riscv-ami-general-linearization=true \
+  example.ll -o example.s
+```
 
-      * ``cmake --build build [-- [options] <target>]`` or your build system specified above
-        directly.
-
-        * The default target (i.e. ``ninja`` or ``make``) will build all of LLVM.
-
-        * The ``check-all`` target (i.e. ``ninja check-all``) will run the
-          regression tests to ensure everything is in working order.
-
-        * CMake will generate targets for each tool and library, and most
-          LLVM sub-projects generate their own ``check-<project>`` target.
-
-        * Running a serial build will be **slow**. To improve speed, try running a
-          parallel build. That's done by default in Ninja; for ``make``, use the option
-          ``-j NNN``, where ``NNN`` is the number of parallel jobs to run.
-          In most cases, you get the best performance if you specify the number of CPU threads you have.
-          On some Unix systems, you can specify this with ``-j$(nproc)``.
-
-      * For more information see [CMake](https://llvm.org/docs/CMake.html).
-
-Consult the
-[Getting Started with LLVM](https://llvm.org/docs/GettingStarted.html#getting-started-with-llvm)
-page for detailed information on configuring and compiling LLVM. You can visit
-[Directory Layout](https://llvm.org/docs/GettingStarted.html#directory-layout)
-to learn about the layout of the source code tree.
-
-## Getting in touch
-
-Join [LLVM Discourse forums](https://discourse.llvm.org/), [discord chat](https://discord.gg/xS7Z362) or #llvm IRC channel on [OFTC](https://oftc.net/).
-
-The LLVM project has adopted a [code of conduct](https://llvm.org/docs/CodeOfConduct.html) for
-participants to all modes of communication within the project.
+完整的带标注 C 示例见原始 AMi 编译器 README 历史版本以及上面链接的源码和测试文件。通用 LLVM 构建说明见[官方 Getting Started 文档](https://llvm.org/docs/GettingStarted.html)。
