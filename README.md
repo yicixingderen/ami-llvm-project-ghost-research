@@ -36,7 +36,7 @@ ninja --version
 git clone --filter=blob:none \
   https://github.com/yicixingderen/ami-llvm-project-ghost-research.git
 cd ami-llvm-project-ghost-research
-git checkout 83651436f5b047c66e1d3677941c3cf9ca6d50fd
+git checkout 3e026d4c63a3ab15db1455784b73fdd773288122
 ```
 
 #### 3. Configure, build, and install
@@ -153,7 +153,7 @@ ninja --version
 git clone --filter=blob:none \
   https://github.com/yicixingderen/ami-llvm-project-ghost-research.git
 cd ami-llvm-project-ghost-research
-git checkout 83651436f5b047c66e1d3677941c3cf9ca6d50fd
+git checkout 3e026d4c63a3ab15db1455784b73fdd773288122
 ```
 
 #### 3. 配置、构建并安装
